@@ -83,7 +83,6 @@ public:
     }
 
 };
-ana
 class medico : public pessoa {
     // Implementação futura
 };
