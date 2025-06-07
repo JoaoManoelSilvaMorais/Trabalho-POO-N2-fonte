@@ -6,6 +6,8 @@ using namespace std;
 
 class pessoa {
 protected:
+    string login;
+    string senha;
     int codigo;
     int cpf[12];
     string nome;
@@ -49,8 +51,7 @@ public:
 
 class secretaria : public pessoa {
 private:
-    string login;
-    string senha;
+    int CodigoSecretaria;
     short cargo; // 0 - secretária, 1 - supervisora
     int codigosMedicos[3]; // Cada secretária pode ter até 3 médicos
 
@@ -58,8 +59,24 @@ public:
     secretaria() {
         cargo = 0;
         for (int i = 0; i < 3; i++) codigosMedicos[i] = -1;
-    }
 
+        std::ifstream registroCheck("RegistrosSecretarias.dat", std::ios::binary);
+        if (registroCheck.good()) {
+            registroCheck.close();
+            cout << "arquivo existente\n" << endl;
+            return;
+        } else {
+            registroCheck.close();
+            this->setLogin("admin");
+            this->setSenha("admin");
+            this->setCodigo(0);
+            this->setCargo(1);
+
+            std::ofstream registroSaida("RegistrosSecretarias.dat", std::ios::binary);
+            registroSaida.write(reinterpret_cast<char*>(this), sizeof(secretaria));
+            registroSaida.close();
+        }
+    }
     void setLogin(string loginin) { login = loginin; }
     void setSenha(string senhain) { senha = senhain; }
     void setCargo(short c) { cargo = c; }
