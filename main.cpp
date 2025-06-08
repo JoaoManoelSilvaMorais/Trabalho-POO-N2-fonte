@@ -1,13 +1,12 @@
 #include <fstream>
 #include <iostream>
 #include <string>
-#include <vector> // Adicionado
+#include <vector>
+#include <limits>//Adicionado
 using namespace std;
 
 class pessoa {
 protected:
-    string login;
-    string senha;
     int codigo;
     int cpf[12];
     string nome;
@@ -51,7 +50,8 @@ public:
 
 class secretaria : public pessoa {
 private:
-    int CodigoSecretaria;
+    string login;
+    string senha;
     short cargo; // 0 - secretária, 1 - supervisora
     int codigosMedicos[3]; // Cada secretária pode ter até 3 médicos
 
@@ -59,24 +59,8 @@ public:
     secretaria() {
         cargo = 0;
         for (int i = 0; i < 3; i++) codigosMedicos[i] = -1;
-
-        std::ifstream registroCheck("RegistrosSecretarias.dat", std::ios::binary);
-        if (registroCheck.good()) {
-            registroCheck.close();
-            cout << "arquivo existente\n" << endl;
-            return;
-        } else {
-            registroCheck.close();
-            this->setLogin("admin");
-            this->setSenha("admin");
-            this->setCodigo(0);
-            this->setCargo(1);
-
-            std::ofstream registroSaida("RegistrosSecretarias.dat", std::ios::binary);
-            registroSaida.write(reinterpret_cast<char*>(this), sizeof(secretaria));
-            registroSaida.close();
-        }
     }
+
     void setLogin(string loginin) { login = loginin; }
     void setSenha(string senhain) { senha = senhain; }
     void setCargo(short c) { cargo = c; }
@@ -186,6 +170,33 @@ void listarConsultas(const vector<Consulta>& consultas, const secretaria& s) {
         }
     }
 }
+//Adicionado
+const paciente* autenticarPaciente(const vector<paciente>& pacientes, const string& login, const string& senha) {
+    for (const auto& p : pacientes) {
+        if (p.getLogin() == login && p.getSenha() == senha) {
+            cout << "Autenticação bem-sucedida para o paciente: " << p.getNome() << endl;
+            return &p;
+        }
+    }
+    cout << "Login ou senha incorretos.\n";
+    return nullptr;
+}
+
+// Função para consultar a agenda de um paciente 
+void consultarAgendaPaciente(const vector<Consulta>& consultas, const paciente& p) {
+    cout << "\n=== Agenda do Paciente: " << p.getNome() << " ===\n";
+    bool encontrouConsulta = false;
+    for (const auto& c : consultas) {
+        if (c.getCodigoPaciente() == p.getCodigo()) {
+            c.exibirConsulta();
+            encontrouConsulta = true;
+        }
+    }
+    if (!encontrouConsulta) {
+        cout << "Nenhuma consulta encontrada para este paciente.\n";
+    }
+}
+
 
 int main() {
     secretaria sec;
@@ -197,5 +208,71 @@ int main() {
 
     cout << "Nome da secretária: " << sec.getNome() << endl;
 
+//Adicionado
+    vector<paciente> pacientes_mock;
+    paciente p1;
+    p1.setCodigo(101);
+    p1.setNome("Maria Silva");
+    p1.setLogin("maria.s");
+    p1.setSenha("123");
+    p1.setCodigoMedicoResponsavel(1);
+    pacientes_mock.push_back(p1);
+
+    paciente p2;
+    p2.setCodigo(102);
+    p2.setNome("Joao Souza");
+    p2.setLogin("joao.s");
+    p2.setSenha("abc");
+    p2.setCodigoMedicoResponsavel(2);
+    pacientes_mock.push_back(p2);
+
+    vector<Consulta> consultas_mock;
+    Consulta c1;
+    c1.setCodigoConsulta(1);
+    c1.setData("01/07/2025");
+    c1.setHorario("10:00");
+    c1.setCodigoMedico(1);
+    c1.setCodigoPaciente(101);
+    consultas_mock.push_back(c1);
+
+    Consulta c2;
+    c2.setCodigoConsulta(2);
+    c2.setData("02/07/2025");
+    c2.setHorario("14:30");
+    c2.setCodigoMedico(2);
+    c2.setCodigoPaciente(102);
+    consultas_mock.push_back(c2);
+
+    Consulta c3;
+    c3.setCodigoConsulta(3);
+    c3.setData("03/07/2025");
+    c3.setHorario("09:00");
+    c3.setCodigoMedico(1);
+    c3.setCodigoPaciente(101);
+    consultas_mock.push_back(c3);
+
+    string loginPaciente;
+    string senhaPaciente;
+    const paciente* pacienteLogado = nullptr;
+
+   
+    cin.ignore(numeric_limits<streamsize>::max(), '\n');
+
+    cout << "\n--- Autenticação do Paciente ---\n";
+    cout << "Login: ";
+    getline(cin, loginPaciente);
+    cout << "Senha: ";
+    getline(cin, senhaPaciente);
+
+    pacienteLogado = autenticarPaciente(pacientes_mock, loginPaciente, senhaPaciente);
+
+    if (pacienteLogado != nullptr) {
+        consultarAgendaPaciente(consultas_mock, *pacienteLogado);
+    } else {
+        cout << "Não foi possível autenticar o paciente. Tente novamente.\n";
+    }
+  
+
     return 0;
 }
+
