@@ -3,8 +3,21 @@
 #include <string>
 #include <vector>
 #include <limits>//Adicionado
+
+//Necessário instalar a biblioteca Cereal para serialização
+//Procure um tutorial de instalação da biblioteca Cereal para o seu sistema operacional.
+// Certifique-se de que a biblioteca Cereal está instalada e configurada corretamente no seu ambiente de desenvolvimento.
+#include <cereal/archives/binary.hpp>
+#include <cereal/types/string.hpp>
+#include <cereal/types/vector.hpp>
+#include <cereal/types/base_class.hpp>
+#include <cereal/types/polymorphic.hpp>
+#include <cereal/cereal.hpp>
 using namespace std;
 
+//CLASSES A FRENTE
+//Classe pessoa é a classe base para todas as pessoas no sistema, como secretárias, médicos e pacientes.
+// Ela contém informações comuns a todas as pessoas, como código, CPF, login, senha, nome, email, telefone e WhatsApp.
 class pessoa {
 protected:
     int codigo;
@@ -17,6 +30,14 @@ protected:
     string whatsapp;
 
 public:
+    // Serialização usando Cereal
+    template <class Archive>
+    void serialize(Archive& ar) {
+        ar(codigo, cpf, login, senha, nome, email, telefone, whatsapp);
+    }
+
+    // Início das funções
+    // Construtor padrão
     pessoa() {
         codigo = 0;
         for (int i = 0; i < 12; i++) {
@@ -56,32 +77,26 @@ public:
     string getWhatsapp() const { return whatsapp; }
 };
 
+// Classe secretaria herda de pessoa e adiciona informações específicas para secretárias, como cargo e códigos de médicos assessorados.
+// A classe secretaria também implementa a serialização usando Cereal.
 class secretaria : public pessoa {
 private:
     short cargo; // 0 - secretária, 1 - supervisora
     int codigosMedicos[3]; // Cada secretária pode ter até 3 médicos
 
 public:
+    // Serialização usando Cereal
+    // A classe secretaria herda de pessoa, então usamos cereal::base_class<pessoa>
+    template <class Archive>
+    void serialize(Archive& ar) {
+        ar(cereal::base_class<pessoa>(this), cargo, codigosMedicos);
+    }
+
+    // Início das funções
+    // Construtor padrão
     secretaria() {
         cargo = 0;
         for (int i = 0; i < 3; i++) codigosMedicos[i] = -1;
-
-        std::ifstream registroCheck("RegistrosSecretarias.dat", std::ios::binary);
-        if (registroCheck.good()) {
-            registroCheck.close();
-            cout << "arquivo existente\n" << endl;
-            return;
-        } else {
-            registroCheck.close();
-            this->setLogin("admin");
-            this->setSenha("admin");
-            this->setCodigo(0);
-            this->setCargo(1);
-
-            std::ofstream registroSaida("RegistrosSecretarias.dat", std::ios::binary);
-            registroSaida.write(reinterpret_cast<char*>(this), sizeof(secretaria));
-            registroSaida.close();
-        }
     }
 
     void setCargo(short c) { cargo = c; }
@@ -106,6 +121,14 @@ private:
     int codigoMedicoResponsavel;
 
 public:
+    // Serialização usando Cereal
+    // A classe paciente herda de pessoa, então usamos cereal::base_class<pessoa>
+    template <class Archive>
+    void serialize(Archive& ar) {
+        ar(cereal::base_class<pessoa>(this), codigoMedicoResponsavel);
+    }
+
+    //Início das funções
     void setCodigoMedicoResponsavel(int cod) { codigoMedicoResponsavel = cod; }
     int getCodigoMedicoResponsavel() const { return codigoMedicoResponsavel; }
 };
@@ -119,6 +142,14 @@ private:
     int codigoPaciente;
 
 public:
+    // Serialização usando Cereal
+    // A classe Consulta não herda de pessoa, então não usamos cereal::base_class<pessoa>
+    template <class Archive>
+    void serialize(Archive& ar) {
+        ar(codigoConsulta, data, horario, codigoMedico, codigoPaciente);
+    }
+
+    //Início das funções
     void setCodigoConsulta(int cod) { codigoConsulta = cod; }
     int getCodigoConsulta() const { return codigoConsulta; }
 
@@ -141,6 +172,130 @@ public:
         cout << "-----------------------------\n";
     }
 };
+
+// FUNÇÕES A FRENTE
+
+//Funções para guardar vetores de médicos, pacientes e secretárias usando Cereal e sobrecarga de funções
+
+// Salva vetores de pessoas em um arquivo binário com o nome "RegistrosPessoas.dat"
+void salvarEmArquivo(const vector<pessoa>& pessoasP) {
+    std::ofstream arquivo("RegistrosPessoas.dat", std::ios::binary | std::ios::trunc);
+    if (!arquivo) {
+        cerr << "Erro ao abrir o arquivo para escrita." << endl;
+        return;
+    }
+    cereal::BinaryOutputArchive archive(arquivo);
+    archive(pessoasP);
+    arquivo.close();
+}
+
+// Sobrecarga da função salvarEmArquivo para aceitar um vetor de secretárias
+void salvarEmArquivo(const vector<secretaria>& secretariasP) {
+    std::ofstream arquivo("RegistrosSecretarias.dat", std::ios::binary | std::ios::trunc);
+    if (!arquivo) {
+        cerr << "Erro ao abrir o arquivo para escrita." << endl;
+        return;
+    }
+    cereal::BinaryOutputArchive archive(arquivo);
+    archive(secretariasP);
+    arquivo.close();
+}
+
+// Sobrecarga da função salvarEmArquivo para aceitar um vetor de médicos
+void salvarEmArquivo(const vector<medico>& medicosP) {
+    std::ofstream arquivo("RegistrosMedicos.dat", std::ios::binary | std::ios::trunc);
+    if (!arquivo) {
+        cerr << "Erro ao abrir o arquivo para escrita." << endl;
+        return;
+    }
+    cereal::BinaryOutputArchive archive(arquivo);
+    archive(medicosP);
+    arquivo.close();
+}
+
+// Sobrecarga da função salvarEmArquivo para aceitar um vetor de pacientes
+void salvarEmArquivo(const vector<paciente>& pacientesP) {
+    std::ofstream arquivo("RegistrosPacientes.dat", std::ios::binary | std::ios::trunc);
+    if (!arquivo) {
+        cerr << "Erro ao abrir o arquivo para escrita." << endl;
+        return;
+    }
+    cereal::BinaryOutputArchive archive(arquivo);
+    archive(pacientesP);
+    arquivo.close();
+}
+
+//Sobrecarga da função salvarEmArquivo para aceitar um vetor de consultas
+void salvarEmArquivo(const vector<Consulta>& consultasP) {
+    std::ofstream arquivo("RegistrosConsultas.dat", std::ios::binary | std::ios::trunc);
+    if (!arquivo) {
+        cerr << "Erro ao abrir o arquivo para escrita." << endl;
+        return;
+    }
+    cereal::BinaryOutputArchive archive(arquivo);
+    archive(consultasP);
+    arquivo.close();
+}
+
+//Todas as funções de carregarArquivo são sobrecarregadas para aceitar diferentes tipos de vetores, e modificam o vetor passado como argumento.
+// Função para carregar os vetores de pessoas
+void carregarArquivo(vector<pessoa>& pessoasP) {
+    std::ifstream arquivo("RegistrosPessoas.dat", std::ios::binary);
+    if (!arquivo) {
+        cerr << "Erro ao abrir o arquivo para leitura." << endl;
+        return;
+    }
+    cereal::BinaryInputArchive archive(arquivo);
+    archive(pessoasP);
+    arquivo.close();
+}
+
+// Sobrecarga da função carregarArquivo para carregar secretárias
+void carregarArquivo(vector<secretaria>& secretariasP) {
+    std::ifstream arquivo("RegistrosSecretarias.dat", std::ios::binary);
+    if (!arquivo) {
+        cerr << "Erro ao abrir o arquivo para leitura." << endl;
+        return;
+    }
+    cereal::BinaryInputArchive archive(arquivo);
+    archive(secretariasP);
+    arquivo.close();
+}
+// Sobrecarga da função carregarArquivo para carregar médicos
+void carregarArquivo(vector<medico>& medicosP) {
+    std::ifstream arquivo("RegistrosMedicos.dat", std::ios::binary);
+    if (!arquivo) {
+        cerr << "Erro ao abrir o arquivo para leitura." << endl;
+        return;
+    }
+    cereal::BinaryInputArchive archive(arquivo);
+    archive(medicosP);
+    arquivo.close();
+}
+
+// Sobrecarga da função carregarArquivo para carregar pacientes
+void carregarArquivo(vector<paciente>& pacientesP) {
+    std::ifstream arquivo("RegistrosPacientes.dat", std::ios::binary);
+    if (!arquivo) {
+        cerr << "Erro ao abrir o arquivo para leitura." << endl;
+        return;
+    }
+    cereal::BinaryInputArchive archive(arquivo);
+    archive(pacientesP);
+    arquivo.close();
+}
+
+// Sobrecarga da função carregarArquivo para carregar consultas
+void carregarArquivo(vector<Consulta>& consultasP) {
+    std::ifstream arquivo("RegistrosConsultas.dat", std::ios::binary);
+    if (!arquivo) {
+        cerr << "Erro ao abrir o arquivo para leitura." << endl;
+        return;
+    }
+    cereal::BinaryInputArchive archive(arquivo);
+    archive(consultasP);
+    arquivo.close();
+}
 
 // Agora usamos os nomes corretos das classes (medico, paciente, secretaria)
 void consultarMedicos(const vector<medico>& medicos, const secretaria& s) {
@@ -191,12 +346,35 @@ void listarConsultas(const vector<Consulta>& consultas, const secretaria& s) {
         }
     }
 }
-//Adicionado
-const paciente* autenticarPaciente(const vector<paciente>& pacientes, const string& login, const string& senha) {
+//A função autenticarLoginSenha e suas sobrecargas verifica se o login e senha fornecidos correspondem a algum registro de paciente, secretária ou médico.
+const paciente* autenticarLoginSenha(const vector<paciente>& pacientes, const string& login, const string& senha) {
     for (const auto& p : pacientes) {
         if (p.getLogin() == login && p.getSenha() == senha) {
             cout << "Autenticação bem-sucedida para o paciente: " << p.getNome() << endl;
             return &p;
+        }
+    }
+    cout << "Login ou senha incorretos.\n";
+    return nullptr;
+}
+
+// Sobrecarga da função autenticarLoginSenha para secretárias
+const secretaria* autenticarLoginSenha(const vector<secretaria>& secretarias, const string& login, const string& senha) {
+    for (const auto& s : secretarias) {
+        if (s.getLogin() == login && s.getSenha() == senha) {
+            cout << "Autenticação bem-sucedida para a secretária: " << s.getNome() << endl;
+            return &s;
+        }
+    }
+    cout << "Login ou senha incorretos.\n";
+    return nullptr;
+}
+// Sobrecarga da função autenticarLoginSenha para médicos
+const medico* autenticarLoginSenha(const vector<medico>& medicos, const string& login, const string& senha) {
+    for (const auto& m : medicos) {
+        if (m.getLogin() == login && m.getSenha() == senha) {
+            cout << "Autenticação bem-sucedida para o médico: " << m.getNome() << endl;
+            return &m;
         }
     }
     cout << "Login ou senha incorretos.\n";
@@ -248,6 +426,8 @@ int main() {
     p2.setCodigoMedicoResponsavel(2);
     pacientes_mock.push_back(p2);
 
+    salvarEmArquivo(pacientes_mock);
+
     vector<Consulta> consultas_mock;
     Consulta c1;
     c1.setCodigoConsulta(1);
@@ -273,6 +453,13 @@ int main() {
     c3.setCodigoPaciente(101);
     consultas_mock.push_back(c3);
 
+    salvarEmArquivo(consultas_mock);
+
+    consultas_mock.clear();
+    pacientes_mock.clear();
+    carregarArquivo(consultas_mock);
+    carregarArquivo(pacientes_mock);
+
     string loginPaciente;
     string senhaPaciente;
     const paciente* pacienteLogado = nullptr;
@@ -286,7 +473,7 @@ int main() {
     cout << "Senha: ";
     getline(cin, senhaPaciente);
 
-    pacienteLogado = autenticarPaciente(pacientes_mock, loginPaciente, senhaPaciente);
+    pacienteLogado = autenticarLoginSenha(pacientes_mock, loginPaciente, senhaPaciente);
 
     if (pacienteLogado != nullptr) {
         consultarAgendaPaciente(consultas_mock, *pacienteLogado);
