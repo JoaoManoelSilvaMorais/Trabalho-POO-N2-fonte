@@ -35,20 +35,15 @@ O **SCAM** é um sistema desenvolvido com o objetivo de gerenciar o controle e a
 
 ## 🎯 Diagramas de Caso de Uso
 
-### Secretária  
-_(Insira aqui a imagem do Diagrama de Caso de Uso da Secretária)_
-
-### Médico  
-_(Insira aqui a imagem do Diagrama de Caso de Uso do Médico)_
-
-### Paciente  
-_(Insira aqui a imagem do Diagrama de Caso de Uso do Paciente)_
+![diagrama de casos drawio](https://github.com/user-attachments/assets/bd18b9f8-760b-476b-9f11-1a2f1eb2d579)
 
 ---
 
 ## 🧩 Diagrama de Classes
+![image](https://github.com/user-attachments/assets/c5398b2d-9f56-409e-929c-aadf0007ee5d)
 
-_(Insira aqui a imagem do Diagrama de Classes)_
+[trabalho poo.drawio.pdf](https://github.com/user-attachments/files/20677762/trabalho.poo.drawio.pdf)
+
 
 ---
 
