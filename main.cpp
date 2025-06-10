@@ -1,1069 +1,773 @@
-#include <fstream>
+/******************************************************************************
+ *
+ * SCAM - Sistema de Controle de Agendamento Médico
+ *
+ * Versão completa com controle de acesso baseado em função (RBAC),
+ * limite de tentativas de login, persistência de dados e criação de
+ * usuário administrador padrão.
+ *
+ ******************************************************************************/
 #include <iostream>
-#include <string>
 #include <vector>
-#include <limits>//Adicionado
+#include <string>
+#include <limits>
+#include <algorithm>
+#include <fstream>
+#include <memory>
 
-//Necessário instalar a biblioteca Cereal para serialização
-//Procure um tutorial de instalação da biblioteca Cereal para o seu sistema operacional.
-// Certifique-se de que a biblioteca Cereal está instalada e configurada corretamente no seu ambiente de desenvolvimento.
-#include <cereal/archives/binary.hpp>
-#include <cereal/types/string.hpp>
+// --- Inclusões da Biblioteca Cereal para Serialização ---
 #include <cereal/types/vector.hpp>
-#include <cereal/types/base_class.hpp>
+#include <cereal/types/string.hpp>
+#include <cereal/types/memory.hpp>
 #include <cereal/types/polymorphic.hpp>
-#include <cereal/cereal.hpp>
-using namespace std;
+#include <cereal/archives/binary.hpp>
 
-//CLASSES A FRENTE
-//Classe pessoa é a classe base para todas as pessoas no sistema, como secretárias, médicos e pacientes.
-// Ela contém informações comuns a todas as pessoas, como código, CPF, login, senha, nome, email, telefone e WhatsApp.
+// --- Declarações Forward das Classes ---
+class pessoa;
+class secretaria;
+class medico;
+class paciente;
+class Consulta;
+
+// --- Definição da Classe Base: pessoa ---
 class pessoa {
 protected:
     int codigo;
-    int cpf[12];
-    string login;
-    string senha;
-    string nome;
-    string email;
-    string telefone;
-    string whatsapp;
+    std::string nome;
+    std::string cpf;
+    std::string email;
+    std::string telefone;
+    std::string whatsapp;
+    std::string login;
+    std::string senha;
 
 public:
-    // Serialização usando Cereal
-    template <class Archive>
-    void serialize(Archive& ar) {
-        ar(codigo, cpf, login, senha, nome, email, telefone, whatsapp);
-    }
-
-    // Início das funções
     // Construtor padrão
-    pessoa() {
-        codigo = 0;
-        for (int i = 0; i < 12; i++) {
-            cpf[i] = 0;
-        }
-        nome = "";
-        email = "";
-        telefone = "";
-        whatsapp = "";
-    }
+    pessoa() : codigo(0) {}
+    // Construtor parametrizado
+    pessoa(int cod, std::string n, std::string cpf_val, std::string mail, std::string tel, std::string whats, std::string l, std::string s)
+        : codigo(cod), nome(n), cpf(cpf_val), email(mail), telefone(tel), whatsapp(whats), login(l), senha(s) {}
+    // Destrutor virtual para garantir a destruição correta das classes derivadas
+    virtual ~pessoa() = default;
 
-    void setLogin(string loginin) { login = loginin; }
-    string getLogin() const { return login; }
-
-    void setSenha(string senhain) { senha = senhain; }
-    string getSenha() const { return senha; }
-
-    void setCodigo(int codin) { codigo = codin; }
+    // --- Getters ---
     int getCodigo() const { return codigo; }
+    std::string getNome() const { return nome; }
+    std::string getLogin() const { return login; }
+    std::string getSenha() const { return senha; }
+    std::string getCpf() const { return cpf; }
 
-    void setCpf(int cpfin[12]) {
-        for (int i = 0; i < 12; i++) {
-            cpf[i] = cpfin[i];
-        }
+    // --- Métodos Virtuais para Polimorfismo ---
+    virtual void exibirInformacoes() const {
+        std::cout << "----------------------------------------\n";
+        std::cout << "Código: " << codigo << "\n";
+        std::cout << "Nome: " << nome << "\n";
+        std::cout << "CPF: " << cpf << "\n";
+        std::cout << "Login: " << login << "\n";
+        std::cout << "E-mail: " << email << "\n";
+        std::cout << "Telefone: " << telefone << "\n";
+        std::cout << "WhatsApp: " << whatsapp << "\n";
     }
-    const int* getCpf() const { return cpf; }
 
-    void setNome(string nomein) { nome = nomein; }
-    string getNome() const { return nome; }
-
-    void setEmail(string emailin) { email = emailin; }
-    string getEmail() const { return email; }
-
-    void setTelefone(string telefonein) { telefone = telefonein; }
-    string getTelefone() const { return telefone; }
-
-    void setWhatsapp(string whatsappin) { whatsapp = whatsappin; }
-    string getWhatsapp() const { return whatsapp; }
+    // Função para serialização com Cereal
+    template <class Archive>
+    void serialize(Archive& archive) {
+        archive(CEREAL_NVP(codigo), CEREAL_NVP(nome), CEREAL_NVP(cpf), CEREAL_NVP(email), 
+                CEREAL_NVP(telefone), CEREAL_NVP(whatsapp), CEREAL_NVP(login), CEREAL_NVP(senha));
+    }
 };
 
-// Classe secretaria herda de pessoa e adiciona informações específicas para secretárias, como cargo e códigos de médicos assessorados.
-// A classe secretaria também implementa a serialização usando Cereal.
+// --- Definição da Classe Derivada: secretaria ---
 class secretaria : public pessoa {
 private:
-    short cargo; // 0 - secretária, 1 - supervisora
-    int codigosMedicos[3]; // Cada secretária pode ter até 3 médicos
+    std::string cargo; // "Secretária" ou "Secretária-Supervisora"
+    std::vector<int> medicosAssessorados;
 
 public:
-    // Serialização usando Cereal
-    // A classe secretaria herda de pessoa, então usamos cereal::base_class<pessoa>
+    secretaria() : pessoa(), cargo("Secretária") {}
+    secretaria(int cod, std::string n, std::string cpf_val, std::string mail, std::string tel, std::string whats, std::string l, std::string s, std::string crg)
+        : pessoa(cod, n, cpf_val, mail, tel, whats, l, s), cargo(crg) {}
+
+    // Getters específicos
+    std::string getCargo() const { return cargo; }
+    const std::vector<int>& getMedicosAssessorados() const { return medicosAssessorados; }
+
+    // [RQ-04] Regra de negócio: Adicionar médico, com limite de 3
+    bool adicionarMedicoAssessorado(int codMedico) {
+        if (medicosAssessorados.size() < 3) {
+            medicosAssessorados.push_back(codMedico);
+            return true;
+        }
+        std::cout << "ERRO: Esta secretária já assessora o número máximo de 3 médicos.\n";
+        return false;
+    }
+
+    // Verifica se a secretária assessora um médico específico
+    bool assessoraMedico(int codMedico) const {
+        return std::find(medicosAssessorados.begin(), medicosAssessorados.end(), codMedico) != medicosAssessorados.end();
+    }
+
+    void exibirInformacoes() const override {
+        pessoa::exibirInformacoes();
+        std::cout << "Cargo: " << cargo << "\n";
+        std::cout << "Médicos Assessorados (Códigos): ";
+        if (medicosAssessorados.empty()) {
+            std::cout << "Nenhum\n";
+        } else {
+            for (int cod : medicosAssessorados) {
+                std::cout << cod << " ";
+            }
+            std::cout << "\n";
+        }
+    }
+
     template <class Archive>
-    void serialize(Archive& ar) {
-        ar(cereal::base_class<pessoa>(this), cargo, codigosMedicos);
-    }
-
-    // Início das funções
-    // Construtor padrão
-    secretaria() {
-        cargo = 0;
-        for (int i = 0; i < 3; i++) codigosMedicos[i] = -1;
-    }
-
-    void setCargo(short c) { cargo = c; }
-    short getCargo() const { return cargo; }
-
-    void setCodigoMedicoAssessorado(int index, int cod) {
-        if (index >= 0 && index < 3) codigosMedicos[index] = cod;
-    }
-
-    int getCodigoMedicoAssessorado(int index) const {
-        if (index >= 0 && index < 3) return codigosMedicos[index];
-        return -1;
+    void serialize(Archive& archive) {
+        archive(cereal::base_class<pessoa>(this), CEREAL_NVP(cargo), CEREAL_NVP(medicosAssessorados));
     }
 };
 
+// --- Definição da Classe Derivada: medico ---
 class medico : public pessoa {
-    
+private:
+    std::string especialidade;
+    std::string crm;
+
+public:
+    medico() : pessoa() {}
+    medico(int cod, std::string n, std::string cpf_val, std::string mail, std::string tel, std::string whats, std::string l, std::string s, std::string esp, std::string crm_val)
+        : pessoa(cod, n, cpf_val, mail, tel, whats, l, s), especialidade(esp), crm(crm_val) {}
+
+    void exibirInformacoes() const override {
+        pessoa::exibirInformacoes();
+        std::cout << "Especialidade: " << especialidade << "\n";
+        std::cout << "CRM: " << crm << "\n";
+    }
+
+    template <class Archive>
+    void serialize(Archive& archive) {
+        archive(cereal::base_class<pessoa>(this), CEREAL_NVP(especialidade), CEREAL_NVP(crm));
+    }
 };
 
+// --- Definição da Classe Derivada: paciente ---
 class paciente : public pessoa {
 private:
     int codigoMedicoResponsavel;
 
 public:
-    // Serialização usando Cereal
-    // A classe paciente herda de pessoa, então usamos cereal::base_class<pessoa>
-    template <class Archive>
-    void serialize(Archive& ar) {
-        ar(cereal::base_class<pessoa>(this), codigoMedicoResponsavel);
+    paciente() : pessoa(), codigoMedicoResponsavel(0) {}
+    paciente(int cod, std::string n, std::string cpf_val, std::string mail, std::string tel, std::string whats, std::string l, std::string s, int codMed)
+        : pessoa(cod, n, cpf_val, mail, tel, whats, l, s), codigoMedicoResponsavel(codMed) {}
+
+    int getCodigoMedicoResponsavel() const { return codigoMedicoResponsavel; }
+
+    void exibirInformacoes() const override {
+        pessoa::exibirInformacoes();
+        std::cout << "Código do Médico Responsável: " << codigoMedicoResponsavel << "\n";
     }
 
-    //Início das funções
-    void setCodigoMedicoResponsavel(int cod) { codigoMedicoResponsavel = cod; }
-    int getCodigoMedicoResponsavel() const { return codigoMedicoResponsavel; }
+    template <class Archive>
+    void serialize(Archive& archive) {
+        archive(cereal::base_class<pessoa>(this), CEREAL_NVP(codigoMedicoResponsavel));
+    }
 };
 
+// --- Definição da Classe Consulta ---
 class Consulta {
 private:
     int codigoConsulta;
-    string data;
-    string horario;
     int codigoMedico;
     int codigoPaciente;
+    std::string dataHora;
+    std::string motivo;
+    std::string status; // "Agendada", "Concluída", "Cancelada"
 
 public:
-    // Serialização usando Cereal
-    // A classe Consulta não herda de pessoa, então não usamos cereal::base_class<pessoa>
-    template <class Archive>
-    void serialize(Archive& ar) {
-        ar(codigoConsulta, data, horario, codigoMedico, codigoPaciente);
+    Consulta() : codigoConsulta(0), codigoMedico(0), codigoPaciente(0), status("Agendada") {}
+    Consulta(int cc, int cm, int cp, std::string dh, std::string m, std::string st = "Agendada")
+        : codigoConsulta(cc), codigoMedico(cm), codigoPaciente(cp), dataHora(dh), motivo(m), status(st) {}
+
+    int getCodigoConsulta() const { return codigoConsulta; }
+    int getCodigoMedico() const { return codigoMedico; }
+    int getCodigoPaciente() const { return codigoPaciente; }
+    
+    void exibirInformacoes() const {
+        std::cout << "----------------------------------------\n";
+        std::cout << "Consulta Cód.: " << codigoConsulta << " | Status: " << status << "\n";
+        std::cout << "Médico (Cód.): " << codigoMedico << " | Paciente (Cód.): " << codigoPaciente << "\n";
+        std::cout << "Data e Hora: " << dataHora << "\n";
+        std::cout << "Motivo: " << motivo << "\n";
     }
 
-    //Início das funções
-    void setCodigoConsulta(int cod) { codigoConsulta = cod; }
-    int getCodigoConsulta() const { return codigoConsulta; }
-
-    void setData(string d) { data = d; }
-    string getData() const { return data; }
-
-    void setHorario(string h) { horario = h; }
-    string getHorario() const { return horario; }
-
-    void setCodigoMedico(int cod) { codigoMedico = cod; }
-    int getCodigoMedico() const { return codigoMedico; }
-
-    void setCodigoPaciente(int cod) { codigoPaciente = cod; }
-    int getCodigoPaciente() const { return codigoPaciente; }
-
-    void exibirConsulta() const {
-        cout << "\nConsulta #" << codigoConsulta << endl;
-        cout << "Data: " << data << ", Horário: " << horario << endl;
-        cout << "Código Médico: " << codigoMedico << ", Código Paciente: " << codigoPaciente << endl;
-        cout << "-----------------------------\n";
+    template <class Archive>
+    void serialize(Archive& archive) {
+        archive(CEREAL_NVP(codigoConsulta), CEREAL_NVP(codigoMedico), CEREAL_NVP(codigoPaciente),
+                CEREAL_NVP(dataHora), CEREAL_NVP(motivo), CEREAL_NVP(status));
     }
 };
 
-// FUNÇÕES A FRENTE
+// Registros Cereal para Polimorfismo (obrigatório para herança)
+CEREAL_REGISTER_TYPE(secretaria);
+CEREAL_REGISTER_TYPE(medico);
+CEREAL_REGISTER_TYPE(paciente);
+CEREAL_REGISTER_POLYMORPHIC_RELATION(pessoa, secretaria);
+CEREAL_REGISTER_POLYMORPHIC_RELATION(pessoa, medico);
+CEREAL_REGISTER_POLYMORPHIC_RELATION(pessoa, paciente);
 
-//Funções para guardar vetores de médicos, pacientes e secretárias usando Cereal e sobrecarga de funções
+// --- Funções Utilitárias e de Sistema ---
 
-// Salva vetores de pessoas em um arquivo binário com o nome "RegistrosPessoas.dat"
-void salvarEmArquivo(const vector<pessoa>& pessoasP) {
-    std::ofstream arquivo("RegistrosPessoas.dat", std::ios::binary | std::ios::trunc);
-    if (!arquivo) {
-        cerr << "Erro ao abrir o arquivo para escrita." << endl;
-        return;
-    }
-    cereal::BinaryOutputArchive archive(arquivo);
-    archive(pessoasP);
-    arquivo.close();
+// Limpa o buffer de entrada para evitar erros com std::getline
+void limparBufferEntrada() {
+    std::cin.ignore(std::numeric_limits<std::streamsize>::max(), '\n');
 }
 
-// Sobrecarga da função salvarEmArquivo para aceitar um vetor de secretárias
-void salvarEmArquivo(const vector<secretaria>& secretariasP) {
-    std::ofstream arquivo("RegistrosSecretarias.dat", std::ios::binary | std::ios::trunc);
-    if (!arquivo) {
-        cerr << "Erro ao abrir o arquivo para escrita." << endl;
-        return;
-    }
-    cereal::BinaryOutputArchive archive(arquivo);
-    archive(secretariasP);
-    arquivo.close();
-}
+// [RQ-11] Autenticação com limite de 3 tentativas
+template <typename T>
+T* autenticar(std::vector<T>& usuarios, const std::string& tipoUsuario) {
+    std::string login, senha;
+    for (int i = 0; i < 3; ++i) {
+        std::cout << "\n--- Autenticação de " << tipoUsuario << " (Tentativa " << i + 1 << "/3) ---\n";
+        std::cout << "Login: ";
+        std::getline(std::cin, login);
+        std::cout << "Senha: ";
+        std::getline(std::cin, senha);
 
-// Sobrecarga da função salvarEmArquivo para aceitar um vetor de médicos
-void salvarEmArquivo(const vector<medico>& medicosP) {
-    std::ofstream arquivo("RegistrosMedicos.dat", std::ios::binary | std::ios::trunc);
-    if (!arquivo) {
-        cerr << "Erro ao abrir o arquivo para escrita." << endl;
-        return;
-    }
-    cereal::BinaryOutputArchive archive(arquivo);
-    archive(medicosP);
-    arquivo.close();
-}
-
-// Sobrecarga da função salvarEmArquivo para aceitar um vetor de pacientes
-void salvarEmArquivo(const vector<paciente>& pacientesP) {
-    std::ofstream arquivo("RegistrosPacientes.dat", std::ios::binary | std::ios::trunc);
-    if (!arquivo) {
-        cerr << "Erro ao abrir o arquivo para escrita." << endl;
-        return;
-    }
-    cereal::BinaryOutputArchive archive(arquivo);
-    archive(pacientesP);
-    arquivo.close();
-}
-
-//Sobrecarga da função salvarEmArquivo para aceitar um vetor de consultas
-void salvarEmArquivo(const vector<Consulta>& consultasP) {
-    std::ofstream arquivo("RegistrosConsultas.dat", std::ios::binary | std::ios::trunc);
-    if (!arquivo) {
-        cerr << "Erro ao abrir o arquivo para escrita." << endl;
-        return;
-    }
-    cereal::BinaryOutputArchive archive(arquivo);
-    archive(consultasP);
-    arquivo.close();
-}
-
-//Todas as funções de carregarArquivo são sobrecarregadas para aceitar diferentes tipos de vetores, e modificam o vetor passado como argumento.
-// Função para carregar os vetores de pessoas
-void carregarArquivo(vector<pessoa>& pessoasP) {
-    std::ifstream arquivo("RegistrosPessoas.dat", std::ios::binary);
-    if (!arquivo) {
-        cerr << "Erro ao abrir o arquivo para leitura." << endl;
-        return;
-    }
-    cereal::BinaryInputArchive archive(arquivo);
-    archive(pessoasP);
-    arquivo.close();
-}
-
-// Sobrecarga da função carregarArquivo para carregar secretárias
-void carregarArquivo(vector<secretaria>& secretariasP) {
-    std::ifstream arquivo("RegistrosSecretarias.dat", std::ios::binary);
-    if (!arquivo) {
-        cerr << "Erro ao abrir o arquivo para leitura." << endl;
-        return;
-    }
-    cereal::BinaryInputArchive archive(arquivo);
-    archive(secretariasP);
-    arquivo.close();
-}
-// Sobrecarga da função carregarArquivo para carregar médicos
-void carregarArquivo(vector<medico>& medicosP) {
-    std::ifstream arquivo("RegistrosMedicos.dat", std::ios::binary);
-    if (!arquivo) {
-        cerr << "Erro ao abrir o arquivo para leitura." << endl;
-        return;
-    }
-    cereal::BinaryInputArchive archive(arquivo);
-    archive(medicosP);
-    arquivo.close();
-}
-
-// Sobrecarga da função carregarArquivo para carregar pacientes
-void carregarArquivo(vector<paciente>& pacientesP) {
-    std::ifstream arquivo("RegistrosPacientes.dat", std::ios::binary);
-    if (!arquivo) {
-        cerr << "Erro ao abrir o arquivo para leitura." << endl;
-        return;
-    }
-    cereal::BinaryInputArchive archive(arquivo);
-    archive(pacientesP);
-    arquivo.close();
-}
-
-// Sobrecarga da função carregarArquivo para carregar consultas
-void carregarArquivo(vector<Consulta>& consultasP) {
-    std::ifstream arquivo("RegistrosConsultas.dat", std::ios::binary);
-    if (!arquivo) {
-        cerr << "Erro ao abrir o arquivo para leitura." << endl;
-        return;
-    }
-    cereal::BinaryInputArchive archive(arquivo);
-    archive(consultasP);
-    arquivo.close();
-}
-
-//Funções de verificação
-
-bool autenticar(const vector<secretaria>& secretariasP, const string& login, const string& senha) {
-    for (const auto& secretaria : secretariasP) {
-        if (secretaria.getLogin() == login && secretaria.getSenha() == senha) {
-            return true; // Retorna 0 se a autenticação for bem-sucedida
-        }
-    }
-    return false; // Retorna -1 se não encontrar
-}
-
-bool autenticar(const vector<medico>& medicosP, const string& login, const string& senha) {
-    for (const auto& medico : medicosP) {
-        if (medico.getLogin() == login && medico.getSenha() == senha) {
-            return true; // Retorna 0 se a autenticação for bem-sucedida
-        }
-    }
-    return false; // Retorna -1 se não encontrar
-}
-
-bool autenticar(const vector<paciente>& pacientesP, const string& login, const string& senha) {
-    for (const auto& paciente : pacientesP) {
-        if (paciente.getLogin() == login && paciente.getSenha() == senha) {
-            return true; // Retorna 0 se a autenticação for bem-sucedida
-        }
-    }
-    return false; // Retorna -1 se não encontrar
-}
-
-//Função busca nome e deleta do vetor
-
-void removerdoVetor(vector<secretaria>& pessoasP, const string& nome){
-    for (int i = 0; i < pessoasP.size(); i++) {
-        if (pessoasP[i].getNome() == nome) {
-            pessoasP.erase(pessoasP.begin() + i);
-            cout << "Secretária " << nome << " removida com sucesso." << endl;
-            return;
-        }
-    }
-}
-void removerdoVetor(vector<medico>& pessoasP, const string& nome) {
-    for (int i = 0; i < pessoasP.size(); i++) {
-        if (pessoasP[i].getNome() == nome) {
-            pessoasP.erase(pessoasP.begin() + i);
-            cout << "Médico " << nome << " removido com sucesso." << endl;
-            return;
-        }
-    }
-}
-void removerdoVetor(vector<paciente>& pessoasP, const string& nome) {
-    for (int i = 0; i < pessoasP.size(); i++) {
-        if (pessoasP[i].getNome() == nome) {
-            pessoasP.erase(pessoasP.begin() + i);
-            cout << "Paciente " << nome << " removido com sucesso." << endl;
-            return;
-        }
-    }
-}
-
-void removerdoVetor(vector<Consulta>& consultasP, int codigoConsulta) {
-    for (int i = 0; i < consultasP.size(); i++) {
-        if (consultasP[i].getCodigoConsulta() == codigoConsulta) {
-            consultasP.erase(consultasP.begin() + i);
-            cout << "Consulta #" << codigoConsulta << " removida com sucesso." << endl;
-            return;
-        }
-    }
-    cout << "Consulta #" << codigoConsulta << " não encontrada." << endl;
-}
-
-// Função para buscar e editar informações de uma instânica de uma classe buscando o nome de uma pessoa
-
-void editarInformacoes(vector<secretaria>& pessoas, const string& nome) {
-    for (auto& pessoa : pessoas) {
-        if (pessoa.getNome() == nome) {
-            cout << "Edição de informações da secretária " << nome << endl;
-            
-            // Campos específicos de secretaria
-            cout << "Novo cargo (0 - secretária, 1 - supervisora): ";
-            short novoCargo;
-            cin >> novoCargo;
-            pessoa.setCargo(novoCargo);
-            
-            // Limpa o buffer antes de ler strings
-            cin.ignore(numeric_limits<streamsize>::max(), '\n');
-            
-            cout << "Digite o novo login: ";
-            string novoLogin;
-            getline(cin, novoLogin);
-            pessoa.setLogin(novoLogin);
-            
-            cout << "Digite a nova senha: ";
-            string novaSenha;
-            getline(cin, novaSenha);
-            pessoa.setSenha(novaSenha);
-            
-            cout << "Digite o novo nome: ";
-            string novoNome;
-            getline(cin, novoNome);
-            pessoa.setNome(novoNome);
-            
-            cout << "Digite o novo CPF (apenas números, 11 dígitos): ";
-            string cpfInput;
-            getline(cin, cpfInput);
-            
-            // Converte string do CPF para array de inteiros
-            int novoCpf[11]; // Corrigido: array de 11 elementos, não 12
-            if (cpfInput.length() == 11) {
-                for (int i = 0; i < 11; i++) {
-                    novoCpf[i] = cpfInput[i] - '0'; // Converte char para int
-                }
-                pessoa.setCpf(novoCpf);
-            } else {
-                cout << "CPF inválido! Mantendo CPF anterior." << endl;
+        for (auto& user : usuarios) {
+            if (user.getLogin() == login && user.getSenha() == senha) {
+                std::cout << "Login bem-sucedido! Bem-vindo(a), " << user.getNome() << ".\n";
+                return &user;
             }
-            
-            cout << "Digite o novo email: ";
-            string novoEmail;
-            getline(cin, novoEmail);
-            pessoa.setEmail(novoEmail);
-            
-            cout << "Digite o novo telefone: ";
-            string novoTelefone;
-            getline(cin, novoTelefone);
-            pessoa.setTelefone(novoTelefone);
-            
-            cout << "Digite o novo WhatsApp: ";
-            string novoWhatsapp;
-            getline(cin, novoWhatsapp);
-            pessoa.setWhatsapp(novoWhatsapp);
-            
-            cout << "Informações da secretária " << nome << " atualizadas com sucesso!" << endl;
-            return;
         }
+        std::cout << "Login ou senha inválidos. " << 2 - i << " tentativa(s) restante(s).\n";
     }
-    cout << "Secretária " << nome << " não encontrada." << endl;
+    std::cout << "Número máximo de tentativas de login atingido. Acesso negado.\n";
+    return nullptr;
 }
 
-void editarInformacoes(vector<medico>& pessoas, const string& nome) {
-    for (auto& pessoa : pessoas) {
-        if (pessoa.getNome() == nome) {
-            cout << "\n=== Edição de informações do médico " << nome << " ===" << endl;
-           
-            // Limpa o buffer de entrada uma única vez no início
-            cin.ignore(numeric_limits<streamsize>::max(), '\n');
-            
-            cout << "Digite o novo login: ";
-            string novoLogin;
-            getline(cin, novoLogin);
-            pessoa.setLogin(novoLogin);
-           
-            cout << "Digite a nova senha: ";
-            string novaSenha;
-            getline(cin, novaSenha);
-            pessoa.setSenha(novaSenha);
-           
-            cout << "Digite o novo nome: ";
-            string novoNome;
-            getline(cin, novoNome);
-            pessoa.setNome(novoNome);
-           
-            cout << "Digite o novo CPF (apenas números, 11 dígitos): ";
-            string cpfInput;
-            getline(cin, cpfInput);
-           
-            // Valida e converte string do CPF para array de inteiros
-            int novoCpf[11];
-            bool cpfValido = false;
-            
-            if (cpfInput.length() == 11) {
-                cpfValido = true;
-                for (int i = 0; i < 11; i++) {
-                    if (cpfInput[i] >= '0' && cpfInput[i] <= '9') {
-                        novoCpf[i] = cpfInput[i] - '0';
-                    } else {
-                        cpfValido = false;
-                        break;
-                    }
-                }
-                
-                if (cpfValido) {
-                    pessoa.setCpf(novoCpf);
-                    cout << "CPF atualizado com sucesso!" << endl;
-                } else {
-                    cout << "ERRO: CPF contém caracteres inválidos! Mantendo CPF anterior." << endl;
-                }
+// Funções de persistência de dados
+template <typename T>
+void salvarEmArquivo(const T& dados, const std::string& nomeArquivo) {
+    std::ofstream os(nomeArquivo, std::ios::binary);
+    if (os) {
+        cereal::BinaryOutputArchive archive(os);
+        archive(dados);
+    }
+}
+
+template <typename T>
+void carregarDeArquivo(T& dados, const std::string& nomeArquivo) {
+    std::ifstream is(nomeArquivo, std::ios::binary);
+    if (is) {
+        cereal::BinaryInputArchive archive(is);
+        archive(dados);
+    }
+}
+
+// Gera um novo código único para qualquer entidade
+int gerarNovoCodigo(const auto&... vetores) {
+    int maxCodigo = 0;
+    auto max_in_vector = [&](const auto& vec) {
+        for (const auto& item : vec) {
+            if constexpr (std::is_same_v<std::decay_t<decltype(item)>, Consulta>) {
+                 if (item.getCodigoConsulta() > maxCodigo) maxCodigo = item.getCodigoConsulta();
             } else {
-                cout << "ERRO: CPF deve ter exatamente 11 dígitos! Mantendo CPF anterior." << endl;
+                 if (item.getCodigo() > maxCodigo) maxCodigo = item.getCodigo();
             }
-           
-            cout << "Digite o novo email: ";
-            string novoEmail;
-            getline(cin, novoEmail);
-            pessoa.setEmail(novoEmail);
-           
-            cout << "Digite o novo telefone: ";
-            string novoTelefone;
-            getline(cin, novoTelefone);
-            pessoa.setTelefone(novoTelefone);
-           
-            cout << "Digite o novo WhatsApp: ";
-            string novoWhatsapp;
-            getline(cin, novoWhatsapp);
-            pessoa.setWhatsapp(novoWhatsapp);
-           
-            cout << "\n✓ Informações do médico " << novoNome << " atualizadas com sucesso!" << endl;
-            cout << "================================================" << endl;
-            return;
         }
-    }
-    cout << "❌ Médico \"" << nome << "\" não encontrado." << endl;
+    };
+    (max_in_vector(vetores), ...);
+    return maxCodigo + 1;
 }
 
-void editarInformacoes(vector<paciente>& pessoas, const string& nome) {
-    for (auto& pessoa : pessoas) {
-        if (pessoa.getNome() == nome) {
-            cout << "Edição de informações do paciente " << nome << endl;
-            
-            // Campos específicos de paciente
-            cout << "Digite o novo login: ";
-            string novoLogin;
-            cin.ignore();
-            getline(cin, novoLogin);
-            pessoa.setLogin(novoLogin);
-            
-            cout << "Digite a nova senha: ";
-            string novaSenha;
-            getline(cin, novaSenha);
-            pessoa.setSenha(novaSenha);
-            
-            cout << "Digite o novo nome: ";
-            string novoNome;
-            getline(cin, novoNome);
-            pessoa.setNome(novoNome);
-            
-            cout << "Digite o novo CPF (apenas números, 11 dígitos): ";
-            string cpfInput;
-            getline(cin, cpfInput);
-            
-            // Converte string do CPF para array de inteiros
-            int novoCpf[11]; // Corrigido: array de 11 elementos, não 12
-            if (cpfInput.length() == 11) {
-                for (int i = 0; i < 11; i++) {
-                    novoCpf[i] = cpfInput[i] - '0'; // Converte char para int
-                }
-                pessoa.setCpf(novoCpf);
-            } else {
-                cout << "CPF inválido! Mantendo CPF anterior." << endl;
-            }
-            
-            cout << "Digite o novo email: ";
-            string novoEmail;
-            getline(cin, novoEmail);
-            pessoa.setEmail(novoEmail);
-            
-            cout << "Digite o novo telefone: ";
-            string novoTelefone;
-            getline(cin, novoTelefone);
-            pessoa.setTelefone(novoTelefone);
-            
-            cout << "Digite o novo WhatsApp: ";
-            string novoWhatsapp;
-            getline(cin, novoWhatsapp);
-            pessoa.setWhatsapp(novoWhatsapp);
-            
-            cout << "Informações do paciente " << nome << " atualizadas com sucesso!" << endl;
-            return;
-        }
-    }
-    cout << "Paciente " << nome << " não encontrado." << endl;
-}
+// --- Funções de Gerenciamento (com regras de negócio) ---
 
-// Function to edit consultation information
-void editarInformacoes(vector<medico>& medicos, vector<paciente>& pacientes, vector<Consulta>& consultas, int codigoConsulta) {
-    for (auto& consulta : consultas) {
-        if (consulta.getCodigoConsulta() == codigoConsulta) {
-            cout << "Edição de informações da consulta #" << codigoConsulta << endl;
-
-            cout << "Digite a nova data (DD/MM/AAAA): ";
-            string novaData;
-            cin.ignore();
-            getline(cin, novaData);
-            consulta.setData(novaData);
-
-            cout << "Digite o novo horário (HH:MM): ";
-            string novoHorario;
-            getline(cin, novoHorario);
-            consulta.setHorario(novoHorario);
-
-            cout << "Digite o novo código do médico: ";
-            int novoCodigoMedico;
-            cin >> novoCodigoMedico;
-            consulta.setCodigoMedico(novoCodigoMedico);
-
-            cout << "Digite o novo código do paciente: ";
-            int novoCodigoPaciente;
-            cin >> novoCodigoPaciente;
-            consulta.setCodigoPaciente(novoCodigoPaciente);
-
-            cout << "Informações da consulta #" << codigoConsulta << " atualizadas com sucesso!" << endl;
-            return;
-        }
-    }
-    cout << "Consulta #" << codigoConsulta << " não encontrada." << endl;
-}
-            
-
-
-//Função para incluir uma nova instância de secretaria, médico ou paciente no vetor correspondente alterando conformemente o código de cada um
-void incluirNoVetor(vector<secretaria>& secretariasP, secretaria& s) {
-    s.setCodigo(secretariasP.size() + 1); // Define o código como o tamanho atual do vetor + 1
-    secretariasP.push_back(s);
-}
-void incluirNoVetor(vector<medico>& medicosP, medico& m) {
-    m.setCodigo(medicosP.size() + 1); // Define o código como o tamanho atual do vetor + 1
-    medicosP.push_back(m);
-}
-void incluirNoVetor(vector<paciente>& pacientesP, paciente& p) {
-    p.setCodigo(pacientesP.size() + 1); // Define o código como o tamanho atual do vetor + 1
-    pacientesP.push_back(p);
-}
-
-//Função para listar as secretárias, médicos e pacientes cadastrados
-void listarPessoas(const vector<secretaria>& secretariasP) {
-    cout << "\n--- Lista de Secretárias ---" << endl;
-    if (secretariasP.empty()) {
-        cout << "Nenhuma secretária cadastrada." << endl;
-        return;
-    }
-
-    for (const auto& s : secretariasP) {
-        // Formata o CPF para exibição
-        string cpfStr;
-        const int* cpfArray = s.getCpf();
-        for (int i = 0; i < 11; i++) { // CPF tem 11 dígitos
-            cpfStr += to_string(cpfArray[i]);
-            if (i == 2 || i == 5) cpfStr += "."; // Formatação do CPF
-            if (i == 8) cpfStr += "-";
-        }
-
-        cout << "Código: " << s.getCodigo() 
-             << " | Nome: " << s.getNome()
-             << " | Cargo: " << (s.getCargo() == 1 ? "Supervisora" : "Normal")
-             << "\nCPF: " << cpfStr
-             << "\nEmail: " << s.getEmail() 
-             << " | Telefone: " << s.getTelefone() 
-             << " | WhatsApp: " << s.getWhatsapp() 
-             << "\n---------------------------------" << endl;
-    }
-}
-void listarPessoas(const vector<medico>& medicosP) {
-    cout << "\n--- Lista de Médicos ---" << endl;
-    
-    if (medicosP.empty()) {
-        cout << "Nenhum médico cadastrado." << endl;
+// [RQ-03] Apenas supervisora pode cadastrar secretária
+void cadastrarSecretaria(secretaria* secLogada, std::vector<secretaria>& secretarias, int& proximoCodigo) {
+    if (secLogada->getCargo() != "Secretária-Supervisora") {
+        std::cout << "ACESSO NEGADO: Apenas secretárias supervisoras podem cadastrar novas secretárias.\n";
         return;
     }
     
-    for (const auto& m : medicosP) {
-        // Formata o CPF para exibição com validação
-        string cpfStr = "";
-        const int* cpfArray = m.getCpf();
-        
-        if (cpfArray != nullptr) {
-            bool cpfValido = true;
-            for (int i = 0; i < 11; i++) {
-                if (cpfArray[i] < 0 || cpfArray[i] > 9) {
-                    cpfValido = false;
-                    break;
-                }
-                cpfStr += to_string(cpfArray[i]);
-                if (i == 2 || i == 5) cpfStr += ".";
-                if (i == 8) cpfStr += "-";
-            }
-            if (!cpfValido) cpfStr = "CPF inválido";
-        } else {
-            cpfStr = "CPF não informado";
-        }
-        
-        cout << "Código: " << m.getCodigo()
-             << " | Nome: " << m.getNome()
-             << "\nCPF: " << cpfStr
-             << "\nEmail: " << m.getEmail()
-             << " | Telefone: " << m.getTelefone()
-             << " | WhatsApp: " << m.getWhatsapp()
-             << "\n---------------------------------" << endl;
-    }
+    std::cout << "\n--- Cadastro de Nova Secretária ---\n";
+    std::string nome, cpf, email, tel, whats, login, senha, cargo;
     
-    cout << "Total: " << medicosP.size() << " médico(s) cadastrado(s)." << endl;
-}
-void listarPessoas(const vector<paciente>& pacientesP) {
-    cout << "\n--- Lista de Pacientes ---" << endl;
-    if (pacientesP.empty()) {
-        cout << "Nenhum paciente cadastrado." << endl;
-        return;
-    }
-
-    for (const auto& p : pacientesP) {
-        // Formata o CPF para exibição
-        string cpfStr;
-        const int* cpfArray = p.getCpf();
-        for (int i = 0; i < 11; i++) { // CPF tem 11 dígitos
-            cpfStr += to_string(cpfArray[i]);
-            if (i == 2 || i == 5) cpfStr += "."; // Formatação do CPF
-            if (i == 8) cpfStr += "-";
-        }
-
-        cout << "Código: " << p.getCodigo() 
-             << " | Nome: " << p.getNome()
-             << " | Médico Responsável: " << p.getCodigoMedicoResponsavel()
-             << "\nCPF: " << cpfStr
-             << "\nEmail: " << p.getEmail() 
-             << " | Telefone: " << p.getTelefone() 
-             << " | WhatsApp: " << p.getWhatsapp() 
-             << "\n---------------------------------" << endl;
-    }
-}
-
-void menuSecretariaChefe(vector<secretaria>& secretarias, vector<medico>& medicos, 
-                        vector<paciente>& pacientes, vector<Consulta>& consultas, 
-                        const secretaria* secretariaLogada) {
-    int opcao;
+    std::cout << "Nome completo: "; std::getline(std::cin, nome);
+    std::cout << "CPF (apenas números): "; std::getline(std::cin, cpf);
+    std::cout << "E-mail: "; std::getline(std::cin, email);
+    std::cout << "Telefone: "; std::getline(std::cin, tel);
+    std::cout << "WhatsApp: "; std::getline(std::cin, whats);
+    std::cout << "Login: "; std::getline(std::cin, login);
+    std::cout << "Senha: "; std::getline(std::cin, senha);
     do {
-        cout << "\n=== MENU SECRETÁRIA CHEFE ===" << endl;
-        cout << "1. Cadastrar Secretária" << endl;
-        cout << "2. Cadastrar Médico" << endl;
-        cout << "3. Cadastrar Paciente" << endl;
-        cout << "4. Agendar Consulta" << endl;
-        cout << "5. Editar Secretária" << endl;
-        cout << "6. Editar Médico" << endl;
-        cout << "7. Editar Paciente" << endl;
-        cout << "8. Editar Consulta" << endl;
-        cout << "9. Remover Secretária" << endl;
-        cout << "10. Remover Médico" << endl;
-        cout << "11. Remover Paciente" << endl;
-        cout << "12. Remover Consulta" << endl;
-        cout << "13. Consultar Secretárias" << endl;
-        cout << "14. Consultar Médicos" << endl;
-        cout << "15. Consultar Pacientes" << endl;
-        cout << "16. Consultar Agenda Médica" << endl;
-        cout << "17. Consultar Agenda de Paciente" << endl;
-        cout << "0. Sair" << endl;
-        cout << "Escolha uma opção: ";
-        cin >> opcao;
-
-        switch(opcao) {
-            case 1: { // Cadastrar Secretária
-                secretaria nova;
-                string nome, login, senha;
-                short cargo;
-                
-                cout << "\n--- Cadastro de Secretária ---" << endl;
-                cout << "Nome: ";
-                cin.ignore();
-                getline(cin, nome);
-                nova.setNome(nome);
-                
-                cout << "Login: ";
-                getline(cin, login);
-                nova.setLogin(login);
-                
-                cout << "Senha: ";
-                getline(cin, senha);
-                nova.setSenha(senha);
-                
-                cout << "Cargo (0 - Normal, 1 - Supervisora): ";
-                cin >> cargo;
-                nova.setCargo(cargo);
-                
-                // Configura CPF padrão (pode ser implementado corretamente depois)
-                int cpf[12] = {0};
-                nova.setCpf(cpf);
-                
-                incluirNoVetor(secretarias, nova);
-                salvarEmArquivo(secretarias);
-                cout << "Secretária cadastrada com sucesso!" << endl;
-                break;
-            }
-            
-            case 2: { // Cadastrar Médico
-                medico novo;
-                string nome, login, senha;
-                
-                cout << "\n--- Cadastro de Médico ---" << endl;
-                cout << "Nome: ";
-                cin.ignore();
-                getline(cin, nome);
-                novo.setNome(nome);
-                
-                cout << "Login: ";
-                getline(cin, login);
-                novo.setLogin(login);
-                
-                cout << "Senha: ";
-                getline(cin, senha);
-                novo.setSenha(senha);
-                
-                // Configura CPF padrão
-                int cpf[12] = {0};
-                novo.setCpf(cpf);
-                
-                incluirNoVetor(medicos, novo);
-                salvarEmArquivo(medicos);
-                cout << "Médico cadastrado com sucesso!" << endl;
-                break;
-            }
-            
-            case 3: { // Cadastrar Paciente
-                paciente novo;
-                string nome, login, senha;
-                int codMedico;
-                
-                cout << "\n--- Cadastro de Paciente ---" << endl;
-                cout << "Nome: ";
-                cin.ignore();
-                getline(cin, nome);
-                novo.setNome(nome);
-                
-                cout << "Login: ";
-                getline(cin, login);
-                novo.setLogin(login);
-                
-                cout << "Senha: ";
-                getline(cin, senha);
-                novo.setSenha(senha);
-                
-                cout << "Código do Médico Responsável: ";
-                cin >> codMedico;
-                novo.setCodigoMedicoResponsavel(codMedico);
-                
-                // Configura CPF padrão
-                int cpf[12] = {0};
-                novo.setCpf(cpf);
-                
-                incluirNoVetor(pacientes, novo);
-                salvarEmArquivo(pacientes);
-                cout << "Paciente cadastrado com sucesso!" << endl;
-                break;
-            }
-            
-            case 4: { // Agendar Consulta
-                Consulta nova;
-                string data, horario;
-                int codMedico, codPaciente;
-                
-                cout << "\n--- Agendamento de Consulta ---" << endl;
-                cout << "Data (DD/MM/AAAA): ";
-                cin >> data;
-                nova.setData(data);
-                
-                cout << "Horário (HH:MM): ";
-                cin >> horario;
-                nova.setHorario(horario);
-                
-                cout << "Código do Médico: ";
-                cin >> codMedico;
-                nova.setCodigoMedico(codMedico);
-                
-                cout << "Código do Paciente: ";
-                cin >> codPaciente;
-                nova.setCodigoPaciente(codPaciente);
-                
-                nova.setCodigoConsulta(consultas.size() + 1);
-                consultas.push_back(nova);
-                salvarEmArquivo(consultas);
-                cout << "Consulta agendada com sucesso! Código: " << nova.getCodigoConsulta() << endl;
-                break;
-            }
-            
-            case 5: { // Editar Secretária
-                string nome;
-                cout << "\n--- Edição de Secretária ---" << endl;
-                cout << "Nome da secretária a editar: ";
-                cin.ignore();
-                getline(cin, nome);
-                editarInformacoes(secretarias, nome);
-                salvarEmArquivo(secretarias);
-                break;
-            }
-            
-            case 6: { // Editar Médico
-                string nome;
-                cout << "\n--- Edição de Médico ---" << endl;
-                cout << "Nome do médico a editar: ";
-                cin.ignore();
-                getline(cin, nome);
-                editarInformacoes(medicos, nome);
-                salvarEmArquivo(medicos);
-                break;
-            }
-            
-            case 7: { // Editar Paciente
-                string nome;
-                cout << "\n--- Edição de Paciente ---" << endl;
-                cout << "Nome do paciente a editar: ";
-                cin.ignore();
-                getline(cin, nome);
-                editarInformacoes(pacientes, nome);
-                salvarEmArquivo(pacientes);
-                break;
-            }
-            
-            case 8: { // Editar Consulta
-                int codigo;
-                cout << "\n--- Edição de Consulta ---" << endl;
-                cout << "Código da consulta a editar: ";
-                cin >> codigo;
-                editarInformacoes(medicos, pacientes, consultas, codigo);
-                salvarEmArquivo(consultas);
-                break;
-            }
-            
-            case 9: { // Remover Secretária
-                string nome;
-                cout << "\n--- Remoção de Secretária ---" << endl;
-                cout << "Nome da secretária a remover: ";
-                cin.ignore();
-                getline(cin, nome);
-                removerdoVetor(secretarias, nome);
-                salvarEmArquivo(secretarias);
-                break;
-            }
-            
-            case 10: { // Remover Médico
-                string nome;
-                cout << "\n--- Remoção de Médico ---" << endl;
-                cout << "Nome do médico a remover: ";
-                cin.ignore();
-                getline(cin, nome);
-                removerdoVetor(medicos, nome);
-                salvarEmArquivo(medicos);
-                break;
-            }
-            
-            case 11: { // Remover Paciente
-                string nome;
-                cout << "\n--- Remoção de Paciente ---" << endl;
-                cout << "Nome do paciente a remover: ";
-                cin.ignore();
-                getline(cin, nome);
-                removerdoVetor(pacientes, nome);
-                salvarEmArquivo(pacientes);
-                break;
-            }
-            
-            case 12: { // Remover Consulta
-                int codigo;
-                cout << "\n--- Remoção de Consulta ---" << endl;
-                cout << "Código da consulta a remover: ";
-                cin >> codigo;
-                removerdoVetor(consultas, codigo);
-                salvarEmArquivo(consultas);
-                break;
-            }
-            
-            case 13: { // Consultar Secretárias
-                listarPessoas(secretarias);
-                break;
-            }
-            
-            case 14: { // Consultar Médicos
-                cout << "\n--- Lista de Médicos ---" << endl;
-                for (const auto& m : medicos) {
-                    cout << "Código: " << m.getCodigo() << " | Nome: " << m.getNome() << endl;
-                }
-                break;
-            }
-            
-            case 15: { // Consultar Pacientes
-                cout << "\n--- Lista de Pacientes ---" << endl;
-                for (const auto& p : pacientes) {
-                    cout << "Código: " << p.getCodigo() << " | Nome: " << p.getNome() 
-                         << " | Médico Responsável: " << p.getCodigoMedicoResponsavel() << endl;
-                }
-                break;
-            }
-            
-            case 16: { // Consultar Agenda Médica
-                int codMedico;
-                cout << "\n--- Consulta de Agenda Médica ---" << endl;
-                cout << "Código do médico: ";
-                cin >> codMedico;
-                
-                cout << "\n--- Consultas do Médico ---" << endl;
-                for (const auto& c : consultas) {
-                    if (c.getCodigoMedico() == codMedico) {
-                        c.exibirConsulta();
-                    }
-                }
-                break;
-            }
-            
-            case 17: { // Consultar Agenda de Paciente
-                int codPaciente;
-                cout << "\n--- Consulta de Agenda do Paciente ---" << endl;
-                cout << "Código do paciente: ";
-                cin >> codPaciente;
-                
-                cout << "\n--- Consultas do Paciente ---" << endl;
-                for (const auto& c : consultas) {
-                    if (c.getCodigoPaciente() == codPaciente) {
-                        c.exibirConsulta();
-                    }
-                }
-                break;
-            }
-            
-            case 0:
-                cout << "Saindo do menu da secretária chefe..." << endl;
-                break;
-                
-            default:
-                cout << "Opção inválida! Tente novamente." << endl;
+        std::cout << "Cargo (Secretária ou Secretária-Supervisora): ";
+        std::getline(std::cin, cargo);
+        if (cargo != "Secretária" && cargo != "Secretária-Supervisora") {
+            std::cout << "Cargo inválido. Tente novamente.\n";
         }
-    } while (opcao != 0);
+    } while (cargo != "Secretária" && cargo != "Secretária-Supervisora");
+
+    secretarias.emplace_back(proximoCodigo, nome, cpf, email, tel, whats, login, senha, cargo);
+    std::cout << "Secretária cadastrada com sucesso! Código: " << proximoCodigo << "\n";
+    proximoCodigo++;
 }
 
-int main() {
-    vector<secretaria> secretarias;
-    vector<medico> medicos;
-    vector<paciente> pacientes;
-    vector<Consulta> consultas;
-
-    // Carrega dados dos arquivos
-    carregarArquivo(secretarias);
-    carregarArquivo(medicos);
-    carregarArquivo(pacientes);
-    carregarArquivo(consultas);
-
-    // Cria secretária chefe se não existir
-    if (secretarias.empty()) {
-        secretaria chefe;
-        chefe.setNome("Chefe");
-        chefe.setLogin("admin");
-        chefe.setSenha("admin123");
-        chefe.setCargo(1); // 1 - supervisora
-        incluirNoVetor(secretarias, chefe);
-        salvarEmArquivo(secretarias);
-    }
-
-    // Autenticação
-    string login, senha;
-    cout << "=== LOGIN ===" << endl;
-    cout << "Login: ";
-    cin >> login;
-    cout << "Senha: ";
-    cin >> senha;
-
-    // Verifica se é a secretária chefe
-    bool autenticado = false;
-    const secretaria* secretariaLogada = nullptr;
+void cadastrarMedico(secretaria* secLogada, std::vector<medico>& medicos, int& proximoCodigo) {
+    std::cout << "\n--- Cadastro de Novo Médico ---\n";
+    std::string nome, cpf, email, tel, whats, login, senha, especialidade, crm;
     
-    for (const auto& s : secretarias) {
-        if (s.getLogin() == login && s.getSenha() == senha && s.getCargo() == 1) {
-            autenticado = true;
-            secretariaLogada = &s;
+    std::cout << "Nome completo: "; std::getline(std::cin, nome);
+    std::cout << "CPF (apenas números): "; std::getline(std::cin, cpf);
+    std::cout << "E-mail: "; std::getline(std::cin, email);
+    std::cout << "Telefone: "; std::getline(std::cin, tel);
+    std::cout << "WhatsApp: "; std::getline(std::cin, whats);
+    std::cout << "Login: "; std::getline(std::cin, login);
+    std::cout << "Senha: "; std::getline(std::cin, senha);
+    std::cout << "Especialidade: "; std::getline(std::cin, especialidade);
+    std::cout << "CRM: "; std::getline(std::cin, crm);
+
+    medicos.emplace_back(proximoCodigo, nome, cpf, email, tel, whats, login, senha, especialidade, crm);
+    std::cout << "Médico cadastrado com sucesso! Código: " << proximoCodigo << "\n";
+    
+    // Associa automaticamente à secretária que o cadastrou, se não for supervisora
+    if (secLogada->getCargo() != "Secretária-Supervisora") {
+        if (secLogada->adicionarMedicoAssessorado(proximoCodigo)) {
+            std::cout << "Médico (Cód. " << proximoCodigo << ") associado automaticamente a você.\n";
+        }
+    }
+    
+    proximoCodigo++;
+}
+
+void cadastrarPaciente(secretaria* secLogada, std::vector<paciente>& pacientes, const std::vector<medico>& medicos, int& proximoCodigo) {
+    std::cout << "\n--- Cadastro de Novo Paciente ---\n";
+    std::string nome, cpf, email, tel, whats, login, senha;
+    int codMedicoResp;
+
+    bool medicoValido = false;
+    do {
+        std::cout << "Digite o código do médico responsável: ";
+        std::cin >> codMedicoResp;
+        limparBufferEntrada();
+        
+        bool medicoExiste = false;
+        for(const auto& m : medicos) {
+            if (m.getCodigo() == codMedicoResp) {
+                medicoExiste = true;
+                break;
+            }
+        }
+        if (!medicoExiste) {
+            std::cout << "Médico com código " << codMedicoResp << " não existe. Tente novamente.\n";
+            continue;
+        }
+
+        // [RQ-07] Valida permissão
+        if (secLogada->getCargo() == "Secretária-Supervisora" || secLogada->assessoraMedico(codMedicoResp)) {
+            medicoValido = true;
+        } else {
+            std::cout << "ACESSO NEGADO: Você não assessora o médico de código " << codMedicoResp << ".\n";
+            return; // Encerra a função
+        }
+    } while (!medicoValido);
+
+    std::cout << "Nome completo: "; std::getline(std::cin, nome);
+    std::cout << "CPF (apenas números): "; std::getline(std::cin, cpf);
+    std::cout << "E-mail: "; std::getline(std::cin, email);
+    std::cout << "Telefone: "; std::getline(std::cin, tel);
+    std::cout << "WhatsApp: "; std::getline(std::cin, whats);
+    std::cout << "Login: "; std::getline(std::cin, login);
+    std::cout << "Senha: "; std::getline(std::cin, senha);
+    
+    pacientes.emplace_back(proximoCodigo, nome, cpf, email, tel, whats, login, senha, codMedicoResp);
+    std::cout << "Paciente cadastrado com sucesso! Código: " << proximoCodigo << "\n";
+    proximoCodigo++;
+}
+
+void agendarConsulta(secretaria* secLogada, std::vector<Consulta>& consultas, const std::vector<medico>& medicos, const std::vector<paciente>& pacientes, int& proximoCodigo) {
+     std::cout << "\n--- Agendamento de Nova Consulta ---\n";
+     int codMedico, codPaciente;
+     std::string dataHora, motivo;
+
+    // Valida Médico
+    do {
+        std::cout << "Código do Médico: ";
+        std::cin >> codMedico;
+        limparBufferEntrada();
+        bool medicoExiste = std::any_of(medicos.begin(), medicos.end(), [codMedico](const auto& m){ return m.getCodigo() == codMedico; });
+        if (!medicoExiste) {
+            std::cout << "Médico não encontrado.\n";
+            continue;
+        }
+        // [RQ-08] Valida Permissão da Agenda
+        if (secLogada->getCargo() == "Secretária-Supervisora" || secLogada->assessoraMedico(codMedico)) {
+            break;
+        } else {
+            std::cout << "ACESSO NEGADO: Você não gerencia a agenda deste médico.\n";
+            return;
+        }
+    } while (true);
+
+    // Valida Paciente
+    do {
+        std::cout << "Código do Paciente: ";
+        std::cin >> codPaciente;
+        limparBufferEntrada();
+        bool pacienteExiste = std::any_of(pacientes.begin(), pacientes.end(), [codPaciente](const auto& p){ return p.getCodigo() == codPaciente; });
+        if (pacienteExiste) break;
+        std::cout << "Paciente não encontrado.\n";
+    } while (true);
+
+    std::cout << "Data e Hora (DD/MM/AAAA HH:MM): ";
+    std::getline(std::cin, dataHora);
+    std::cout << "Motivo da consulta: ";
+    std::getline(std::cin, motivo);
+
+    consultas.emplace_back(proximoCodigo, codMedico, codPaciente, dataHora, motivo);
+    std::cout << "Consulta agendada com sucesso! Código: " << proximoCodigo << "\n";
+    proximoCodigo++;
+}
+
+// Funções de listagem com controle de acesso
+// [RQ-05] Apenas supervisora pode consultar secretárias
+void listarSecretarias(const secretaria* secLogada, const std::vector<secretaria>& secretarias) {
+    if (secLogada->getCargo() != "Secretária-Supervisora") {
+        std::cout << "ACESSO NEGADO: Apenas secretárias supervisoras podem consultar a lista de secretárias.\n";
+        return;
+    }
+    std::cout << "\n--- Lista de Todas as Secretárias ---\n";
+    if (secretarias.empty()) {
+        std::cout << "Nenhuma secretária cadastrada.\n";
+    } else {
+        for (const auto& s : secretarias) {
+            s.exibirInformacoes();
+        }
+    }
+}
+
+// [RQ-06] Secretária consulta médicos que assessora, supervisora consulta todos
+void listarMedicos(const secretaria* secLogada, const std::vector<medico>& medicos) {
+    std::cout << "\n--- Lista de Médicos ---\n";
+    bool encontrou = false;
+    if (medicos.empty()){
+        std::cout << "Nenhum médico cadastrado.\n";
+        return;
+    }
+    for (const auto& m : medicos) {
+        if (secLogada->getCargo() == "Secretária-Supervisora" || secLogada->assessoraMedico(m.getCodigo())) {
+            m.exibirInformacoes();
+            encontrou = true;
+        }
+    }
+    if (!encontrou) {
+        std::cout << "Nenhum médico encontrado sob sua assessoria.\n";
+    }
+}
+
+// [RQ-07] Secretária consulta pacientes dos médicos que assessora
+void listarPacientes(const secretaria* secLogada, const std::vector<paciente>& pacientes) {
+     std::cout << "\n--- Lista de Pacientes ---\n";
+    bool encontrou = false;
+    if (pacientes.empty()){
+        std::cout << "Nenhum paciente cadastrado.\n";
+        return;
+    }
+    for (const auto& p : pacientes) {
+        if (secLogada->getCargo() == "Secretária-Supervisora" || secLogada->assessoraMedico(p.getCodigoMedicoResponsavel())) {
+            p.exibirInformacoes();
+            encontrou = true;
+        }
+    }
+    if (!encontrou) {
+        std::cout << "Nenhum paciente encontrado sob sua assessoria.\n";
+    }
+}
+
+// Agendas
+void consultarAgendaMedica(const secretaria* secLogada, const std::vector<Consulta>& consultas) {
+    int codMedico;
+    std::cout << "Digite o código do médico para ver a agenda: ";
+    std::cin >> codMedico;
+    limparBufferEntrada();
+
+    // [RQ-08] Valida permissão
+    if (secLogada->getCargo() != "Secretária-Supervisora" && !secLogada->assessoraMedico(codMedico)) {
+        std::cout << "ACESSO NEGADO: Você não tem permissão para ver a agenda deste médico.\n";
+        return;
+    }
+    
+    std::cout << "\n--- Agenda do Médico (Cód. " << codMedico << ") ---\n";
+    bool encontrada = false;
+    for(const auto& c : consultas) {
+        if (c.getCodigoMedico() == codMedico) {
+            c.exibirInformacoes();
+            encontrada = true;
+        }
+    }
+    if (!encontrada) std::cout << "Nenhuma consulta encontrada para este médico.\n";
+}
+
+// [RQ-09] Secretária consulta agenda de pacientes dos médicos que assessora
+void consultarAgendaPaciente(const secretaria* secLogada, const std::vector<Consulta>& consultas, const std::vector<paciente>& pacientes) {
+    int codPaciente;
+    std::cout << "Digite o código do paciente para ver a agenda: ";
+    std::cin >> codPaciente;
+    limparBufferEntrada();
+
+    int codMedicoResponsavel = -1;
+    for(const auto& p : pacientes) {
+        if (p.getCodigo() == codPaciente) {
+            codMedicoResponsavel = p.getCodigoMedicoResponsavel();
             break;
         }
     }
 
-    if (autenticado) {
-        cout << "\nBem-vinda, " << secretariaLogada->getNome() << "!" << endl;
-        menuSecretariaChefe(secretarias, medicos, pacientes, consultas, secretariaLogada);
-    } else {
-        cout << "Acesso negado. Apenas secretárias supervisoras podem acessar este menu." << endl;
+    if (codMedicoResponsavel == -1) {
+        std::cout << "Paciente não encontrado.\n";
+        return;
     }
+
+    if (secLogada->getCargo() != "Secretária-Supervisora" && !secLogada->assessoraMedico(codMedicoResponsavel)) {
+        std::cout << "ACESSO NEGADO: Você não tem permissão para ver a agenda deste paciente.\n";
+        return;
+    }
+    
+    std::cout << "\n--- Agenda do Paciente (Cód. " << codPaciente << ") ---\n";
+    bool encontrada = false;
+    for(const auto& c : consultas) {
+        if (c.getCodigoPaciente() == codPaciente) {
+            c.exibirInformacoes();
+            encontrada = true;
+        }
+    }
+    if (!encontrada) std::cout << "Nenhuma consulta encontrada para este paciente.\n";
+}
+
+// --- Sub-Menus de Gerenciamento ---
+
+void menuGerenciarMedicos(secretaria* secLogada, std::vector<medico>& medicos, int& proximoCodigo) {
+     int escolha;
+    do {
+        std::cout << "\n-- Gerenciar Médicos --\n";
+        std::cout << "1. Cadastrar Novo Médico\n";
+        std::cout << "2. Listar Médicos\n";
+        std::cout << "0. Voltar\n";
+        std::cout << "Escolha: ";
+        std::cin >> escolha;
+        limparBufferEntrada();
+        
+        switch(escolha) {
+            case 1: cadastrarMedico(secLogada, medicos, proximoCodigo); break;
+            case 2: listarMedicos(secLogada, medicos); break;
+            case 0: break;
+            default: std::cout << "Opção inválida.\n";
+        }
+    } while (escolha != 0);
+}
+
+void menuGerenciarPacientes(secretaria* secLogada, std::vector<paciente>& pacientes, const std::vector<medico>& medicos, int& proximoCodigo) {
+     int escolha;
+    do {
+        std::cout << "\n-- Gerenciar Pacientes --\n";
+        std::cout << "1. Cadastrar Novo Paciente\n";
+        std::cout << "2. Listar Pacientes\n";
+        std::cout << "0. Voltar\n";
+        std::cout << "Escolha: ";
+        std::cin >> escolha;
+        limparBufferEntrada();
+        
+        switch(escolha) {
+            case 1: cadastrarPaciente(secLogada, pacientes, medicos, proximoCodigo); break;
+            case 2: listarPacientes(secLogada, pacientes); break;
+            case 0: break;
+            default: std::cout << "Opção inválida.\n";
+        }
+    } while (escolha != 0);
+}
+
+void menuGerenciarConsultas(secretaria* secLogada, std::vector<Consulta>& consultas, const std::vector<medico>& medicos, const std::vector<paciente>& pacientes, int& proximoCodigo) {
+     int escolha;
+    do {
+        std::cout << "\n-- Gerenciar Consultas --\n";
+        std::cout << "1. Agendar Nova Consulta\n";
+        std::cout << "2. Listar Todas as Consultas (Permitidas)\n";
+        std::cout << "0. Voltar\n";
+        std::cout << "Escolha: ";
+        std::cin >> escolha;
+        limparBufferEntrada();
+        
+        switch(escolha) {
+            case 1: agendarConsulta(secLogada, consultas, medicos, pacientes, proximoCodigo); break;
+            case 2: {
+                 std::cout << "\n--- Lista de Consultas ---\n";
+                 bool encontrou = false;
+                 for (const auto& c : consultas) {
+                     if (secLogada->getCargo() == "Secretária-Supervisora" || secLogada->assessoraMedico(c.getCodigoMedico())) {
+                         c.exibirInformacoes();
+                         encontrou = true;
+                     }
+                 }
+                 if (!encontrou) std::cout << "Nenhuma consulta encontrada para as suas permissões.\n";
+                break;
+            }
+            case 0: break;
+            default: std::cout << "Opção inválida.\n";
+        }
+    } while (escolha != 0);
+}
+
+// --- Menus Principais de Usuário ---
+
+void menuSecretaria(secretaria* secLogada, std::vector<secretaria>& secretarias, std::vector<medico>& medicos, std::vector<paciente>& pacientes, std::vector<Consulta>& consultas, int& proximoCodigo) {
+    int escolha;
+    do {
+        std::cout << "\n=================================================";
+        std::cout << "\n--- Menu Secretária: " << secLogada->getNome() << " (" << secLogada->getCargo() << ") ---";
+        std::cout << "\n=================================================\n";
+        std::cout << "1. Gerenciar Médicos\n";
+        std::cout << "2. Gerenciar Pacientes\n";
+        std::cout << "3. Gerenciar Consultas\n";
+        std::cout << "4. Consultar Agenda de Médico\n";
+        std::cout << "5. Consultar Agenda de Paciente\n";
+        if (secLogada->getCargo() == "Secretária-Supervisora") {
+            std::cout << "--- Opções da Supervisora ---\n";
+            std::cout << "6. Cadastrar Nova Secretária\n";
+            std::cout << "7. Listar Todas as Secretárias\n";
+        }
+        std::cout << "-------------------------------------------------\n";
+        std::cout << "0. Sair (Logout)\n";
+        std::cout << "Escolha: ";
+        std::cin >> escolha;
+        limparBufferEntrada();
+
+        switch (escolha) {
+            case 1: menuGerenciarMedicos(secLogada, medicos, proximoCodigo); break;
+            case 2: menuGerenciarPacientes(secLogada, pacientes, medicos, proximoCodigo); break;
+            case 3: menuGerenciarConsultas(secLogada, consultas, medicos, pacientes, proximoCodigo); break;
+            case 4: consultarAgendaMedica(secLogada, consultas); break;
+            case 5: consultarAgendaPaciente(secLogada, consultas, pacientes); break;
+            case 6:
+                if (secLogada->getCargo() == "Secretária-Supervisora") {
+                    cadastrarSecretaria(secLogada, secretarias, proximoCodigo);
+                } else {
+                    std::cout << "Opção inválida.\n";
+                }
+                break;
+            case 7:
+                 if (secLogada->getCargo() == "Secretária-Supervisora") {
+                    listarSecretarias(secLogada, secretarias);
+                 } else {
+                    std::cout << "Opção inválida.\n";
+                 }
+                break;
+            case 0: std::cout << "Fazendo logout...\n"; break;
+            default: std::cout << "Opção inválida. Tente novamente.\n"; break;
+        }
+    } while (escolha != 0);
+}
+
+void menuMedico(medico* medLogado, const std::vector<Consulta>& consultas) {
+    std::cout << "\n--- Menu Médico: " << medLogado->getNome() << " ---\n";
+    std::cout << "--- Sua Agenda de Consultas ---\n";
+    bool encontrou = false;
+    for(const auto& c : consultas) {
+        if (c.getCodigoMedico() == medLogado->getCodigo()) {
+            c.exibirInformacoes();
+            encontrou = true;
+        }
+    }
+    if (!encontrou) std::cout << "Nenhuma consulta na sua agenda.\n";
+    std::cout << "\nPressione Enter para sair...";
+    std::cin.get();
+}
+
+void menuPaciente(paciente* pacLogado, const std::vector<Consulta>& consultas) {
+    std::cout << "\n--- Menu Paciente: " << pacLogado->getNome() << " ---\n";
+    std::cout << "--- Suas Consultas Agendadas ---\n";
+    bool encontrou = false;
+    for (const auto& c : consultas) {
+        if (c.getCodigoPaciente() == pacLogado->getCodigo()) {
+            c.exibirInformacoes();
+            encontrou = true;
+        }
+    }
+    if (!encontrou) std::cout << "Nenhuma consulta agendada para você.\n";
+    std::cout << "\nPressione Enter para sair...";
+    std::cin.get();
+}
+
+
+// --- Função Principal ---
+int main() {
+    std::vector<secretaria> secretarias;
+    std::vector<medico> medicos;
+    std::vector<paciente> pacientes;
+    std::vector<Consulta> consultas;
+    
+    // Carrega os dados dos arquivos binários
+    carregarDeArquivo(secretarias, "secretarias.bin");
+    carregarDeArquivo(medicos, "medicos.bin");
+    carregarDeArquivo(pacientes, "pacientes.bin");
+    carregarDeArquivo(consultas, "consultas.bin");
+
+    // [Requisito Chave]: Cria usuário admin se o sistema estiver vazio
+    if (secretarias.empty()) {
+        std::cout << "AVISO: Nenhum usuário encontrado. Criando secretária supervisora padrão.\n";
+        std::cout << "=> Login: admin, Senha: admin\n";
+        secretarias.emplace_back(1, "Admin Supervisora", "00000000000", "admin@scam.com", "0", "0", "admin", "admin", "Secretária-Supervisora");
+    }
+
+    int proximoCodigo = gerarNovoCodigo(secretarias, medicos, pacientes, consultas);
+
+    int tipoUsuario;
+    do {
+        std::cout << "\n\n### BEM-VINDO AO SISTEMA SCAM ###\n";
+        std::cout << "1. Entrar como Secretária\n";
+        std::cout << "2. Entrar como Médico\n";
+        std::cout << "3. Entrar como Paciente\n";
+        std::cout << "0. Sair do Programa\n";
+        std::cout << "Escolha uma opção: ";
+        std::cin >> tipoUsuario;
+        limparBufferEntrada(); // Essencial após ler um número e antes de um getline
+
+        switch (tipoUsuario) {
+            case 1: {
+                secretaria* secAutenticada = autenticar(secretarias, "Secretária");
+                if (secAutenticada) {
+                    menuSecretaria(secAutenticada, secretarias, medicos, pacientes, consultas, proximoCodigo);
+                }
+                break;
+            }
+            case 2: {
+                medico* medAutenticado = autenticar(medicos, "Médico");
+                if (medAutenticado) {
+                    menuMedico(medAutenticado, consultas);
+                }
+                break;
+            }
+            case 3: {
+                paciente* pacAutenticado = autenticar(pacientes, "Paciente");
+                if (pacAutenticado) {
+                    menuPaciente(pacAutenticado, consultas);
+                }
+                break;
+            }
+            case 0:
+                std::cout << "Saindo... Salvando todos os dados.\n";
+                break;
+            default:
+                std::cout << "Opção inválida. Tente novamente.\n";
+                break;
+        }
+    } while (tipoUsuario != 0);
+
+    // Salva todos os dados em arquivos antes de encerrar
+    salvarEmArquivo(secretarias, "secretarias.bin");
+    salvarEmArquivo(medicos, "medicos.bin");
+    salvarEmArquivo(pacientes, "pacientes.bin");
+    salvarEmArquivo(consultas, "consultas.bin");
+    
+    std::cout << "Programa finalizado.\n";
 
     return 0;
 }
